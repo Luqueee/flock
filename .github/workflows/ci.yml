@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  LUAU_VERSION: "0.743"
+  LUAU_SHA256: 99d45afb4afaee00ba631c526c8e8c76c67b60f6f119953ce6409be6d6953663
+  STYLUA_VERSION: v2.6.0
+  STYLUA_SHA256: a485f72bbfa22e4642e77a84b5edc2611a5cab7477b34e2e709dd8f78e919895
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Luau and StyLua
+        run: |
+          set -eu
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/luau-lang/luau/releases/download/${LUAU_VERSION}/luau-ubuntu.zip" -o luau.zip
+          echo "${LUAU_SHA256}  luau.zip" | sha256sum -c -
+          unzip -q luau.zip -d "$HOME/bin"
+          curl -fsSL "https://github.com/JohnnyMorganz/StyLua/releases/download/${STYLUA_VERSION}/stylua-linux-x86_64.zip" -o stylua.zip
+          echo "${STYLUA_SHA256}  stylua.zip" | sha256sum -c -
+          unzip -q stylua.zip -d "$HOME/bin"
+          chmod +x "$HOME/bin/luau" "$HOME/bin/stylua"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      # The type check is skipped here: it needs the definitions shipped with Tern, which is in closed beta.
+      - name: Format, tests
+        run: ./scripts/check.sh

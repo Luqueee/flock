@@ -1,0 +1,8 @@
+schema = 1
+id = "flock"
+name = "Flock"
+version = "0.6.0"
+description = "A native sidebar that groups omp agents, terminals and sessions by project and machine, and opens an agent's worktree in VS Code."
+icon = "terminal"
+window = "window.luau"
+styles = ["flock.css"]
