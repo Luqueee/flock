@@ -8,6 +8,11 @@ transcript and composer, and a click on any entry focuses the **original pane**.
 
 > The interface text is currently in Spanish.
 
+![Flock beside omp: an agent waiting for an answer on top, projects with their agents and terminals below](docs/screenshot.png)
+
+*Demo data: three agents (one working, one waiting for an answer, one idle) in made-up projects. The panel on the
+right is omp's own interface, untouched.*
+
 ## Features
 
 - **Projects** by machine and working directory, with their sessions, agents and terminals. Projects with the same
