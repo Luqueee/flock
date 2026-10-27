@@ -22,6 +22,7 @@ export type Snapshot = {
 	agents: { InputAgent },
 	hosts: { [number]: string },
 	excluded: { [number]: boolean },
+	pinned: { [number]: string }?,
 }
 export type Agent = {
 	pane: number,
@@ -40,6 +41,7 @@ export type Terminal = {
 	program: string?,
 	command: string?,
 	state: "running" | "ready" | "exited" | "open",
+	pinned: boolean?,
 	exit_status: number?,
 }
 export type Session = {
@@ -255,7 +257,8 @@ local function ensureSession(state: BuildState, project: Project, source: InputS
 	return row
 end
 
-local function panePath(state: BuildState, pane: InputPane, tab: InputTab?): string
+-- Where the pane's program really is, ignoring any pin.
+local function livePanePath(state: BuildState, pane: InputPane, tab: InputTab?): string
 	local agent = state.indexes.agentsByPane[pane.pane]
 	if agent and nonempty(agent.cwd) then
 		return normalizePath(agent.cwd)
@@ -267,6 +270,15 @@ local function panePath(state: BuildState, pane: InputPane, tab: InputTab?): str
 		return normalizePath(tab.cwd :: string)
 	end
 	return ""
+end
+
+-- The project path a pane belongs to: a pinned terminal stays in its project wherever its shell goes.
+local function panePath(state: BuildState, pane: InputPane, tab: InputTab?): string
+	local pinned = state.snapshot.pinned
+	if pinned ~= nil and pinned[pane.pane] ~= nil and not state.indexes.agentsByPane[pane.pane] then
+		return pinned[pane.pane]
+	end
+	return livePanePath(state, pane, tab)
 end
 
 local function collectPaneSessions(state: BuildState)
@@ -361,15 +373,17 @@ local function terminalState(pane: InputPane): "running" | "ready" | "exited" | 
 end
 
 local function addTerminal(state: BuildState, pane: InputPane, inputSession: InputSession, tab: InputTab)
-	local terminalPath = panePath(state, pane, tab)
+	local pinnedPath = if state.snapshot.pinned ~= nil then state.snapshot.pinned[pane.pane] else nil
+	local terminalPath = if pinnedPath ~= nil then pinnedPath else panePath(state, pane, tab)
 	local project = projectFor(state, inputSession.host, terminalPath)
 	local session = ensureSession(state, project, inputSession)
 	local running = pane.running
 	local terminal: Terminal = {
 		pane = pane.pane,
 		session = inputSession.id,
-		title = pane.title,
-		cwd = terminalPath,
+		title = if pinnedPath ~= nil then pathName(pinnedPath) else pane.title,
+		cwd = if pinnedPath ~= nil then livePanePath(state, pane, tab) else terminalPath,
+		pinned = if pinnedPath ~= nil then true else nil,
 		program = if type(pane.program) == "string" then pane.program else nil,
 		command = if running ~= nil
 				and type(running.line) == "string"
@@ -492,6 +506,10 @@ function Model.fingerprint(snapshot: Snapshot): string
 	end
 	for _, pane in sortedKeys(snapshot.excluded) do
 		table.insert(parts, row("x", pane))
+	end
+	local pinned = snapshot.pinned or {}
+	for _, pane in sortedKeys(pinned) do
+		table.insert(parts, row("pin", pane, pinned[pane]))
 	end
 	return table.concat(parts, "\n")
 end

@@ -24,7 +24,13 @@ local MAX_MODEL = 80
 local MAX_MESSAGE = 160
 local MAX_VIEW_BYTES = 190 * 1024
 
-export type Options = { onlyAgents: boolean, projectMenu: string? }
+export type Options = {
+	onlyAgents: boolean,
+	projectMenu: string?,
+	closeConfirm: string?,
+	closePane: number?,
+	collapsed: { [string]: boolean },
+}
 
 local function bounded(value: string, limit: number): string
 	if #value <= limit then
@@ -66,7 +72,49 @@ local function compactPath(path: string): string
 	end
 	return "…/" .. parts[#parts - 1] .. "/" .. parts[#parts]
 end
-local function agentNode(agent: Agent, focused: number?, keyPrefix: string): Node
+
+local function actionBadge(label: string, key: string, role: string, action: string, tone: string): Node
+	return withProps(ui.badge(label, tone), { key = key, role = role, actions = { click = action } })
+end
+
+local function paneCloseButton(keyPrefix: string, pane: number, noun: string, action: string): Node
+	return withProps(
+		actionBadge(
+			"×",
+			keyPrefix .. "close:" .. tostring(pane),
+			role("pane-close"),
+			action .. tostring(pane),
+			"muted"
+		),
+		{ title = "Cerrar " .. noun }
+	)
+end
+
+local function paneCloseConfirm(keyPrefix: string, pane: number, question: string): Node
+	return withProps(
+		ui.col({
+			ui.text(ui.span(question, "warning")),
+			ui.row({
+				actionBadge(
+					"Cerrar",
+					keyPrefix .. "confirm-close:" .. tostring(pane),
+					role("launch"),
+					"confirm-close-pane=" .. tostring(pane),
+					"error"
+				),
+				actionBadge(
+					"Cancelar",
+					keyPrefix .. "cancel-close:" .. tostring(pane),
+					role("cancel"),
+					"cancel-project",
+					"muted"
+				),
+			}),
+		}),
+		{ key = keyPrefix .. "close-confirm:" .. tostring(pane), role = role("chooser") }
+	)
+end
+local function agentNode(agent: Agent, focused: number?, keyPrefix: string, closing: number?): Node
 	local state, tone = nativeState(agent.state)
 	local detail = { ui.span(state, tone) }
 	if agent.model ~= nil and agent.model ~= "" then
@@ -84,6 +132,7 @@ local function agentNode(agent: Agent, focused: number?, keyPrefix: string): Nod
 				title = "Abrir el worktree de este agente en VS Code",
 				actions = { click = "agent-code=" .. tostring(agent.pane) },
 			}),
+			paneCloseButton(keyPrefix, agent.pane, "este agente", "close-pane="),
 		}),
 		{ key = keyPrefix .. "head:" .. tostring(agent.pane), role = role("agent-head") }
 	)
@@ -93,6 +142,9 @@ local function agentNode(agent: Agent, focused: number?, keyPrefix: string): Nod
 	}
 	if agent.state == "waiting_input" and agent.last_message ~= nil and agent.last_message ~= "" then
 		table.insert(children, ui.text(ui.span(bounded(agent.last_message, MAX_MESSAGE), "muted")))
+	end
+	if closing == agent.pane then
+		table.insert(children, paneCloseConfirm(keyPrefix, agent.pane, "¿Cerrar este agente? Se termina su chat."))
 	end
 	local agentRole = if focused == agent.pane then role("active") else role("normal")
 	return withProps(ui.col(children), {
@@ -119,33 +171,44 @@ local function terminalNode(terminal: Terminal, focused: number?): Node
 	elseif terminal.program ~= nil and terminal.program ~= "" then
 		detail ..= " · " .. bounded(terminal.program, MAX_MODEL)
 	end
-	return withProps(
-		ui.col({
-			ui.text({ ui.span(">_ ", "muted"), ui.span(bounded(terminal.title, MAX_TITLE), "strong") }),
-			ui.text(ui.span(detail, tone)),
-		}),
-		{
-			key = "terminal:" .. tostring(terminal.pane),
-			role = if focused == terminal.pane then role("terminal-active") else role("terminal"),
-			title = terminal.title .. "\n" .. terminal.cwd .. (if terminal.command ~= nil
-					and terminal.command ~= ""
-				then "\n" .. terminal.command
-				else ""),
-			actions = { click = "pane=" .. tostring(terminal.pane) },
-		}
-	)
+	local children: { Node } = {
+		withProps(
+			ui.row({
+				withProps(
+					ui.text({ ui.span(">_ ", "muted"), ui.span(bounded(terminal.title, MAX_TITLE), "strong") }),
+					{
+						key = "terminal-title:" .. tostring(terminal.pane),
+						role = role("agent-title"),
+					}
+				),
+				paneCloseButton("terminal:", terminal.pane, "esta terminal", "confirm-close-pane="),
+			}),
+			{ key = "terminal-head:" .. tostring(terminal.pane), role = role("agent-head") }
+		),
+		ui.text(ui.span(detail, tone)),
+	}
+	return withProps(ui.col(children), {
+		key = "terminal:" .. tostring(terminal.pane),
+		role = if focused == terminal.pane then role("terminal-active") else role("terminal"),
+		title = terminal.title .. "\n" .. terminal.cwd .. (if terminal.command ~= nil
+				and terminal.command ~= ""
+			then "\n" .. terminal.command
+			else ""),
+		actions = { click = "pane=" .. tostring(terminal.pane) },
+	})
 end
 
 local function sessionNode(
 	session: Session,
 	focused: number?,
 	agentLimit: number,
-	terminalLimit: number
+	terminalLimit: number,
+	closing: number?
 ): (Node, number, number, number, number)
 	local children: { Node } = {}
 	local renderedAgents = math.min(#session.agents, agentLimit)
 	for i = 1, renderedAgents do
-		table.insert(children, agentNode(session.agents[i], focused, "agent:"))
+		table.insert(children, agentNode(session.agents[i], focused, "agent:", closing))
 	end
 	local hiddenAgents = #session.agents - renderedAgents
 	if hiddenAgents > 0 then
@@ -190,10 +253,6 @@ local function sessionNode(
 	return group, renderedAgents, hiddenAgents, renderedTerminals, hiddenTerminals
 end
 
-local function actionBadge(label: string, key: string, role: string, action: string, tone: string): Node
-	return withProps(ui.badge(label, tone), { key = key, role = role, actions = { click = action } })
-end
-
 local function header(board: Model.Board): Node
 	local summary: { Node } =
 		{ ui.badge(tostring(board.total) .. (if board.total == 1 then " agente" else " agentes"), "neutral") }
@@ -230,14 +289,20 @@ local function header(board: Model.Board): Node
 	end
 	return withProps(
 		ui.row({
-			ui.text(ui.span("Proyectos", "strong")),
+			withProps(
+				ui.row({
+					ui.text(ui.span("Proyectos", "strong")),
+					actionBadge("+ Workspace", "new-workspace", role("new-workspace"), "new-workspace", "accent"),
+				}),
+				{ key = "title", role = role("title") }
+			),
 			withProps(ui.row(summary), { key = "summary", role = role("summary") }),
 		}),
 		{ key = "header", role = role("header") }
 	)
 end
 
-local function attentionSection(board: Model.Board, focused: number?): Node?
+local function attentionSection(board: Model.Board, focused: number?, closing: number?): Node?
 	local waiting = Model.waiting(board)
 	if #waiting == 0 then
 		return nil
@@ -258,7 +323,7 @@ local function attentionSection(board: Model.Board, focused: number?): Node?
 				end
 			end
 		end
-		local item = agentNode(agent, focused, "attention:")
+		local item = agentNode(agent, focused, "attention:", closing)
 		local context = projectName .. " · " .. sessionName .. " · " .. hostName
 		table.insert(
 			item.c :: { Node },
@@ -357,7 +422,7 @@ end
 
 type Rendered = { sessions: number, agents: number, terminals: number }
 
-local function sessionRows(project: Project, focused: number?, rendered: Rendered): ({ Node }, number)
+local function sessionRows(project: Project, focused: number?, rendered: Rendered, closing: number?): ({ Node }, number)
 	local nodes: { Node } = {}
 	local shownSessions = 0
 	for _, session in project.sessions do
@@ -387,7 +452,7 @@ local function sessionRows(project: Project, focused: number?, rendered: Rendere
 			)
 		end
 		local group, addedAgents, _, addedTerminals =
-			sessionNode(session, focused, MAX_AGENTS - rendered.agents, MAX_TERMINALS - rendered.terminals)
+			sessionNode(session, focused, MAX_AGENTS - rendered.agents, MAX_TERMINALS - rendered.terminals, closing)
 		table.insert(nodes, group)
 		rendered.sessions += 1
 		shownSessions += 1
@@ -408,26 +473,90 @@ local function omittedRows(project: Project, shownSessions: number): Node?
 	})
 end
 
-local function projectNode(project: Project, focused: number?, options: Options, rendered: Rendered): Node
-	local projectChildren: { Node } = { projectPathRow(project) }
-	local chooser = launcherChooser(project, options)
-	if chooser then
-		table.insert(projectChildren, chooser)
+local function closeConfirmation(project: Project, options: Options): Node?
+	if options.closeConfirm ~= project.key then
+		return nil
 	end
-	local rows, shownSessions = sessionRows(project, focused, rendered)
-	for _, node in rows do
-		table.insert(projectChildren, node)
-	end
-	local omitted = omittedRows(project, shownSessions)
-	if omitted then
-		table.insert(projectChildren, omitted)
-	end
-	return withProps(ui.section({ ui.span(bounded(project.name, MAX_TITLE), "strong") }, projectChildren), {
-		key = "project:" .. project.key,
-		role = role("project"),
-		collapsible = true,
-		collapsed = false,
+	local count = #project.sessions
+	local question = "¿Cerrar «"
+		.. bounded(project.name, MAX_TITLE)
+		.. "» y "
+		.. (if count == 1 then "su workspace" else "sus " .. tostring(count) .. " workspaces")
+		.. "? Se terminan sus programas."
+	return withProps(
+		ui.col({
+			ui.text(ui.span(question, "warning")),
+			ui.row({
+				actionBadge(
+					"Cerrar",
+					"confirm-close:" .. project.key,
+					role("launch"),
+					"confirm-close=" .. project.key,
+					"error"
+				),
+				actionBadge("Cancelar", "cancel-close:" .. project.key, role("cancel"), "cancel-project", "muted"),
+			}),
+		}),
+		{ key = "close-confirm:" .. project.key, role = role("chooser") }
+	)
+end
+
+local function projectHead(project: Project, collapsed: boolean): Node
+	local toggle = withProps(
+		actionBadge(
+			if collapsed then "▸" else "▾",
+			"project-toggle:" .. project.key,
+			role("project-toggle"),
+			"toggle-project=" .. project.key,
+			"muted"
+		),
+		{ title = if collapsed then "Expandir" else "Contraer" }
+	)
+	local title = withProps(ui.text(ui.span(bounded(project.name, MAX_TITLE), "strong")), {
+		key = "project-title:" .. project.key,
+		role = role("project-title"),
+		title = "Ir a la terminal de este proyecto",
+		actions = { click = "category-terminal=" .. project.key },
 	})
+	local close = withProps(
+		actionBadge(
+			"×",
+			"project-close:" .. project.key,
+			role("project-close"),
+			"close-project=" .. project.key,
+			"muted"
+		),
+		{ title = "Cerrar este proyecto y sus workspaces" }
+	)
+	return withProps(
+		ui.row({ toggle, title, close }),
+		{ key = "project-head:" .. project.key, role = role("project-head") }
+	)
+end
+
+local function projectNode(project: Project, focused: number?, options: Options, rendered: Rendered): Node
+	local collapsed = options.collapsed[project.key] == true
+	local projectChildren: { Node } = { projectHead(project, collapsed) }
+	if not collapsed then
+		table.insert(projectChildren, projectPathRow(project))
+		local chooser = launcherChooser(project, options)
+		if chooser then
+			table.insert(projectChildren, chooser)
+		end
+		local confirmation = closeConfirmation(project, options)
+		if confirmation then
+			table.insert(projectChildren, confirmation)
+		end
+		local rows, shownSessions = sessionRows(project, focused, rendered, options.closePane)
+		for _, node in rows do
+			table.insert(projectChildren, node)
+		end
+		local omitted = omittedRows(project, shownSessions)
+		if omitted then
+			table.insert(projectChildren, omitted)
+		end
+	end
+	return withProps(ui.col(projectChildren), { key = "project:" .. project.key, role = role("project") })
 end
 
 local function omittedProjectRows(children: { Node }, eligibleProjects: number, shownProjects: number, options: Options)
@@ -448,7 +577,7 @@ end
 
 function View.build(board: Model.Board, focused: number?, options: Options): Node
 	local children: { Node } = { header(board) }
-	local attention = attentionSection(board, focused)
+	local attention = attentionSection(board, focused, options.closePane)
 	if attention then
 		table.insert(children, attention)
 	end

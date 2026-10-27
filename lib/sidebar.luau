@@ -16,6 +16,9 @@ export type State = {
 	enabled: boolean,
 	onlyAgents: boolean,
 	projectMenu: string?,
+	closeConfirm: string?,
+	closePane: number?,
+	collapsed: { [string]: boolean },
 	agentHistory: { number },
 	pending: boolean,
 	reconciling: boolean,
@@ -31,6 +34,9 @@ function Sidebar.new(): State
 		enabled = tern.kv.get("enabled") == true,
 		onlyAgents = tern.kv.get("only_agents") == true,
 		projectMenu = nil,
+		closeConfirm = nil,
+		closePane = nil,
+		collapsed = {},
 		agentHistory = {},
 		pending = false,
 		reconciling = false,
@@ -166,12 +172,26 @@ local function render(
 )
 	Sidebar.recordAgent(state, cx, anchor)
 	local snapshot = Snapshot.take(cx, excluded)
-	local options: View.Options = { onlyAgents = state.onlyAgents, projectMenu = state.projectMenu }
+	local options: View.Options = {
+		onlyAgents = state.onlyAgents,
+		projectMenu = state.projectMenu,
+		closeConfirm = state.closeConfirm,
+		closePane = state.closePane,
+		collapsed = state.collapsed,
+	}
+	local collapsedKeys: { string } = {}
+	for key in state.collapsed do
+		table.insert(collapsedKeys, key)
+	end
+	table.sort(collapsedKeys)
 	local inputs = table.concat({
 		Model.fingerprint(snapshot),
 		tostring(anchor),
 		tostring(options.onlyAgents),
 		tostring(options.projectMenu),
+		tostring(options.closeConfirm),
+		tostring(options.closePane),
+		table.concat(collapsedKeys, "\0"),
 	}, "\n")
 	local panel = panels[1]
 	if panel and state.inputs[panel] == inputs then
@@ -313,6 +333,36 @@ end
 
 function Sidebar.cancelProjectMenu(state: State)
 	state.projectMenu = nil
+	state.closeConfirm = nil
+	state.closePane = nil
+end
+
+function Sidebar.toggleProject(state: State, key: string?)
+	if key ~= nil then
+		if state.collapsed[key] then
+			state.collapsed[key] = nil
+		else
+			state.collapsed[key] = true
+		end
+	end
+end
+
+function Sidebar.askClose(state: State, key: string?)
+	state.closeConfirm = if state.closeConfirm == key then nil else key
+	state.closePane = nil
+	state.projectMenu = nil
+end
+
+function Sidebar.askClosePane(state: State, value: string?)
+	local pane = value and tonumber(value)
+	state.closePane = if state.closePane == pane then nil else pane
+	state.closeConfirm = nil
+	state.projectMenu = nil
+end
+
+function Sidebar.cancelClose(state: State)
+	state.closeConfirm = nil
+	state.closePane = nil
 end
 
 return Sidebar

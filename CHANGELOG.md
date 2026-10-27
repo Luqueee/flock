@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/) (while below 1.0, minor versions may change behaviour).
 
+## [Unreleased]
+
+### Added
+- **+ Workspace** button in the sidebar header: creates a new session with a terminal and switches to it.
+- Clicking a project's name goes to its persistent terminal, creating it only the first time. It keeps its project and
+  name when its shell changes directory.
+- **×** on a project closes its sessions after a confirmation; locked sessions block it.
+- **×** on every agent card (after a confirmation) and terminal (immediately) closes that pane.
+- Icon buttons (**▾/▸**, **×**, **+**) are fixed-size squares with the glyph centred.
+
+### Changed
+- Projects are no longer native collapsible sections: a **▾/▸** button collapses them, so the name can open a terminal.
+
 ## [0.6.0] - 2026-10-21
 
 ### Changed

@@ -77,6 +77,30 @@ local actions: { [string]: (any, WindowCx) -> () } = {
 	["last-agent"] = function(_, cx)
 		Navigation.previousAgent(state, cx)
 	end,
+	["new-workspace"] = function(_, cx)
+		Projects.createWorkspace(state, cx)
+	end,
+	["category-terminal"] = function(ev, cx)
+		Projects.openCategoryTerminal(state, cx, ev.value)
+	end,
+	["toggle-project"] = function(ev, cx)
+		Sidebar.toggleProject(state, ev.value)
+		Sidebar.update(state, cx)
+	end,
+	["close-project"] = function(ev, cx)
+		Sidebar.askClose(state, ev.value)
+		Sidebar.update(state, cx)
+	end,
+	["confirm-close"] = function(ev, cx)
+		Projects.closeProject(state, cx, ev.value)
+	end,
+	["close-pane"] = function(ev, cx)
+		Sidebar.askClosePane(state, ev.value)
+		Sidebar.update(state, cx)
+	end,
+	["confirm-close-pane"] = function(ev, cx)
+		Projects.closePane(state, cx, ev.value)
+	end,
 	project = function(ev, cx)
 		Sidebar.toggleProjectMenu(state, ev.value)
 		Sidebar.update(state, cx)

@@ -253,6 +253,22 @@ check(
 	"one terminal session may group under multiple existing project paths"
 )
 
+-- A pinned terminal keeps its project and its name when its shell moves, and the fingerprint reacts to the pin.
+local pinnedSnapshot = blank()
+add(pinnedSnapshot, 20, 1, 1, "/work/app", nil)
+pinnedSnapshot.panes[1].kind = "terminal"
+pinnedSnapshot.panes[1].cwd = "/somewhere/else"
+local unpinnedFingerprint = Model.fingerprint(pinnedSnapshot)
+pinnedSnapshot.pinned = { [20] = "/work/app" }
+board = Model.build(pinnedSnapshot)
+local pinnedTerminal = project(board, 1, "/work/app").sessions[1].terminals[1]
+check(#board.projects == 1, "a pinned terminal must not create a project for the directory it moved to")
+check(
+	pinnedTerminal.pinned == true and pinnedTerminal.title == "app" and pinnedTerminal.cwd == "/somewhere/else",
+	"a pinned terminal must keep the project name as title and report its real directory"
+)
+check(Model.fingerprint(pinnedSnapshot) ~= unpinnedFingerprint, "pinning a terminal must change the fingerprint")
+
 -- Only explicit ordinary terminal panes qualify; native agent metadata wins and pane ids are counted once.
 local filteredTerminals = blank()
 add(filteredTerminals, 1, 1, 1, "/app", "working")

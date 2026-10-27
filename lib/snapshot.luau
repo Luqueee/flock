@@ -1,6 +1,7 @@
 --!strict
 
 local Model = require("./model")
+local Pins = require("./pins")
 
 local Snapshot = {}
 local OWNER = tern.plugin.id
@@ -61,7 +62,15 @@ function Snapshot.take(cx: WindowCx, excluded: { [number]: boolean }): Model.Sna
 		}
 		table.insert(agents, agent)
 	end
-	return { sessions = sessions, tabs = tabs, panes = panes, agents = agents, hosts = hosts, excluded = excluded }
+	return {
+		sessions = sessions,
+		tabs = tabs,
+		panes = panes,
+		agents = agents,
+		hosts = hosts,
+		excluded = excluded,
+		pinned = Pins.panePaths(cx),
+	}
 end
 
 -- The board for the current window state, excluding this plugin's own panels.

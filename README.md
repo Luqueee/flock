@@ -63,6 +63,16 @@ Bind any of them in your own `keybinds`; user keys always win over plugin keys.
 
 - Click an **agent** or **terminal** to focus its pane, switching session first if needed.
 - Click a project's path to focus its session. A project with several sessions lists them as separate rows.
+- **+ Workspace** in the header creates a new session (workspace) on the current machine and switches to it. It starts
+  with a plain terminal and shows up as a "Sin directorio" project until a pane reports a working directory.
+- Click a project's **name** to go to the project's own terminal. It is created the first time (in the project's
+  directory) and only focused afterwards, never duplicated; Flock remembers it across reloads. It stays under that
+  project and keeps the project's name when its shell `cd`s elsewhere (the tooltip shows where it really is).
+  Closing it makes the next click create a new one. **▾/▸** collapses or expands the project.
+- **×** on a project asks for confirmation and then closes all of its sessions, ending their programs. A locked session
+  blocks it. Nothing else in Flock closes sessions.
+- **×** on an agent card asks for confirmation and then closes that pane (the chat ends with it). **×** on a terminal
+  closes it at once.
 - **+** on a project offers *new omp*, *terminal* or *cancel*. The new pane opens in a new tab of that project's
   session and machine and never replaces an existing one. `omp` must be on the `PATH` of that machine's shell.
 - **VS Code** on a project opens its folder; on an agent card it opens the agent's worktree (see below).
